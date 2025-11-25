@@ -113,14 +113,78 @@ install_go() {
 
 setup_path() {
     local bin_path="$GO_DIR/bin"
+    local shell_profile=""
+    local user_shell=""
     
-    if [[ ":$PATH:" != *":$bin_path:"* ]]; then
-        log_info "Go binary path is not in your PATH."
+    # Detect shell
+    user_shell=$(basename "$SHELL")
+    
+    case "$user_shell" in
+        bash)
+            if [ -f "$HOME/.bashrc" ]; then
+                shell_profile="$HOME/.bashrc"
+            elif [ -f "$HOME/.bash_profile" ]; then
+                shell_profile="$HOME/.bash_profile"
+            fi
+            ;;
+        zsh)
+            shell_profile="$HOME/.zshrc"
+            ;;
+        *)
+            # Fallback detection
+            if [ -f "$HOME/.zshrc" ]; then
+                shell_profile="$HOME/.zshrc"
+            elif [ -f "$HOME/.bashrc" ]; then
+                shell_profile="$HOME/.bashrc"
+            fi
+            ;;
+    esac
+
+    # Check current PATH
+    if [[ ":$PATH:" == *":$bin_path:"* ]]; then
+        log_success "Go binary path is already in PATH."
+        return
+    fi
+
+    log_info "Go binary path is not in your PATH."
+    
+    if [ -n "$shell_profile" ]; then
+        # Check if already in profile
+        if grep -q "export PATH=$bin_path:\$PATH" "$shell_profile"; then
+             log_success "Path configuration already exists in $shell_profile (needs source)."
+             echo -e "Run: source $shell_profile"
+             return
+        fi
+
+        echo -e "Detected shell profile: ${GREEN}$shell_profile${NC}"
+        read -p "Do you want to automatically add Go to your PATH in $shell_profile? [y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo >> "$shell_profile"
+            echo "# Go programming language" >> "$shell_profile"
+            echo "export PATH=$bin_path:\$PATH" >> "$shell_profile"
+            log_success "Added Go to PATH in $shell_profile"
+            
+            # Prompt for shell reload
+            echo
+            log_info "To apply changes, your shell needs to be reloaded."
+            read -p "Do you want to reload your shell now? (This will restart your terminal session) [y/N] " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                log_info "Reloading shell..."
+                exec "$user_shell"
+            else
+                echo -e "To apply changes immediately, run: source $shell_profile"
+            fi
+        else
+             log_info "Skipping automatic PATH configuration."
+             echo -e "Add the following line to your shell profile:"
+             echo -e "${GREEN}export PATH=$bin_path:\$PATH${NC}"
+        fi
+    else
+        log_info "Could not detect shell profile."
         echo -e "Add the following line to your shell profile (e.g., ~/.bashrc, ~/.zshrc):"
         echo -e "${GREEN}export PATH=$bin_path:\$PATH${NC}"
-        echo -e "Then run: source ~/.bashrc (or your profile file)"
-    else
-        log_success "Go binary path is already in PATH."
     fi
 }
 
